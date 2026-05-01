@@ -26,7 +26,7 @@ The project runs two containers:
 - Docker Compose v2
 - At least 8 GB RAM available for the Satisfactory server
 - Ports available on the host:
-  - `7634/tcp` for the dashboard by default, configurable with `DASHBOARD_HOST_PORT`
+  - no dashboard host port is published by default; Coolify should route the domain to container port `80`
   - `7777/tcp` and `7777/udp` for the game server by default, configurable with `SATISFACTORY_GAME_*`
   - `8888/tcp` for reliable messaging by default, configurable with `SATISFACTORY_MESSAGING_HOST_PORT`
 
@@ -49,17 +49,15 @@ Edit `.env` before starting:
 ```env
 WEB_ADMIN_PASSWORD=use-a-real-password
 JWT_SECRET=use-a-long-random-secret
-DASHBOARD_HOST_IP=0.0.0.0
-DASHBOARD_HOST_PORT=7634
 DASHBOARD_CONTAINER_PORT=80
 MAXPLAYERS=4
 ```
 
-This publishes the dashboard as `7634:80`:
+The dashboard container listens on port `80`. In Coolify, assign your dashboard domain to the `dashboard` service instead of publishing host port `80`.
 
 ```env
-DASHBOARD_HOST_PORT=7634
 DASHBOARD_CONTAINER_PORT=80
+SERVICE_FQDN_DASHBOARD=dash.example.com
 ```
 
 Start everything:
@@ -70,15 +68,7 @@ docker compose up -d --build
 
 Open the dashboard:
 
-```text
-http://localhost:7634
-```
-
-If you changed `DASHBOARD_HOST_PORT`, use that host port instead. Example:
-
-```text
-http://localhost:8088
-```
+Use the domain configured in Coolify, for example `https://dash.example.com`.
 
 Log in with `WEB_ADMIN_PASSWORD`.
 
@@ -88,8 +78,6 @@ Log in with `WEB_ADMIN_PASSWORD`.
 | --- | --- | --- |
 | `WEB_ADMIN_PASSWORD` | `change-me-now` | Password for the dashboard login |
 | `JWT_SECRET` | `replace-with-a-long-random-string` | Secret used to sign dashboard sessions |
-| `DASHBOARD_HOST_IP` | `0.0.0.0` | Host interface used for the dashboard port binding |
-| `DASHBOARD_HOST_PORT` | `7634` | Host port for the dashboard |
 | `DASHBOARD_CONTAINER_PORT` | `80` | Internal port the dashboard container listens on |
 | `DASHBOARD_DEV_API_PORT` | `8080` | Local development backend port |
 | `DASHBOARD_MEMORY_LIMIT` | `768m` | Docker memory limit for the dashboard container |
@@ -221,21 +209,14 @@ During local development:
 
 Coolify creates its own runtime `.env` file. It does not automatically use `.env.example`.
 
-If deployment fails with a Docker bind error, then the configured dashboard host port is already used on your server. Set this environment variable in the Coolify application:
+Do not publish host port `80` or `443` for the dashboard in Coolify. Those ports are already used by the Coolify proxy. The dashboard should only expose container port `80`; the domain routes through Coolify.
+
+The values that matter are:
 
 ```env
-DASHBOARD_HOST_PORT=7634
-```
-
-Then redeploy. You can use any free host port, for example `7635`, `8088`, or `18080`.
-
-If Coolify still tries to bind another port, check the runtime environment variables in Coolify. The values that matter are:
-
-```env
-DASHBOARD_HOST_IP=0.0.0.0
-DASHBOARD_HOST_PORT=7634
 DASHBOARD_CONTAINER_PORT=80
 DASHBOARD_MEMORY_LIMIT=768m
+SERVICE_FQDN_DASHBOARD=dash.bolte.lol
 ```
 
 For your Satisfactory API connection, either leave `SATISFACTORY_API_URL` empty and use protocol/host/port:
