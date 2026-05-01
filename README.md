@@ -26,7 +26,7 @@ The project runs two containers:
 - Docker Compose v2
 - At least 8 GB RAM available for the Satisfactory server
 - Ports available on the host:
-  - `3000/tcp` for the dashboard by default, configurable with `DASHBOARD_HOST_PORT`
+  - `7634/tcp` for the dashboard by default, configurable with `DASHBOARD_HOST_PORT`
   - `7777/tcp` and `7777/udp` for the game server
   - `8888/tcp` as an additional server port exposed by the image
 
@@ -49,12 +49,12 @@ Edit `.env` before starting:
 ```env
 WEB_ADMIN_PASSWORD=use-a-real-password
 JWT_SECRET=use-a-long-random-secret
-DASHBOARD_HOST_PORT=3000
+DASHBOARD_HOST_PORT=7634
 DASHBOARD_CONTAINER_PORT=80
 MAXPLAYERS=4
 ```
 
-To expose the dashboard as `7634:80`, set:
+This publishes the dashboard as `7634:80`:
 
 ```env
 DASHBOARD_HOST_PORT=7634
@@ -70,13 +70,13 @@ docker compose up -d --build
 Open the dashboard:
 
 ```text
-http://localhost:3000
+http://localhost:7634
 ```
 
 If you changed `DASHBOARD_HOST_PORT`, use that host port instead. Example:
 
 ```text
-http://localhost:7634
+http://localhost:3000
 ```
 
 Log in with `WEB_ADMIN_PASSWORD`.
@@ -87,7 +87,7 @@ Log in with `WEB_ADMIN_PASSWORD`.
 | --- | --- | --- |
 | `WEB_ADMIN_PASSWORD` | `change-me-now` | Password for the dashboard login |
 | `JWT_SECRET` | `replace-with-a-long-random-string` | Secret used to sign dashboard sessions |
-| `DASHBOARD_HOST_PORT` | `3000` | Host port for the dashboard |
+| `DASHBOARD_HOST_PORT` | `7634` | Host port for the dashboard |
 | `DASHBOARD_CONTAINER_PORT` | `80` | Internal port the dashboard container listens on |
 | `SATISFACTORY_CONTAINER_NAME` | `satisfactory-server` | Container controlled by the dashboard |
 | `SATISFACTORY_IMAGE` | `wolveix/satisfactory-server:latest` | Docker image checked and pulled by the update flow |
@@ -200,6 +200,24 @@ During local development:
 
 - Node API: `http://localhost:3000`
 - Vite frontend: `http://localhost:5173`
+
+## Coolify Deployment
+
+Coolify creates its own runtime `.env` file. It does not automatically use `.env.example`.
+
+If deployment fails with a message like this:
+
+```text
+Bind for 0.0.0.0:3000 failed: port is already allocated
+```
+
+then the dashboard host port is already used on your server. Set this environment variable in the Coolify application:
+
+```env
+DASHBOARD_HOST_PORT=7634
+```
+
+Then redeploy. You can use any free host port, for example `7635`, `8088`, or `18080`.
 
 ## Security Notes
 
