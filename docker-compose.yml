@@ -1,0 +1,49 @@
+services:
+  satisfactory-server:
+    container_name: satisfactory-server
+    hostname: satisfactory-server
+    image: wolveix/satisfactory-server:latest
+    restart: unless-stopped
+    ports:
+      - "7777:7777/tcp"
+      - "7777:7777/udp"
+      - "8888:8888/tcp"
+    volumes:
+      - ./data/satisfactory-server:/config
+    environment:
+      MAXPLAYERS: ${MAXPLAYERS:-4}
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      STEAMBETA: ${STEAMBETA:-false}
+      SKIPUPDATE: ${SKIPUPDATE:-false}
+    deploy:
+      resources:
+        limits:
+          memory: 8G
+        reservations:
+          memory: 4G
+
+  dashboard:
+    container_name: satisfactory-dashboard
+    build: .
+    restart: unless-stopped
+    depends_on:
+      - satisfactory-server
+    ports:
+      - "3000:3000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./data/dashboard:/app/data
+      - ./data/satisfactory-server:/satisfactory-data:ro
+    environment:
+      PORT: 3000
+      APP_DATA_DIR: /app/data
+      SAVE_ROOT: /satisfactory-data/saved
+      WEB_ADMIN_PASSWORD: ${WEB_ADMIN_PASSWORD:-change-me-now}
+      JWT_SECRET: ${JWT_SECRET:-replace-with-a-long-random-string}
+      SATISFACTORY_CONTAINER_NAME: ${SATISFACTORY_CONTAINER_NAME:-satisfactory-server}
+      SATISFACTORY_IMAGE: ${SATISFACTORY_IMAGE:-wolveix/satisfactory-server:latest}
+      SATISFACTORY_API_URL: ${SATISFACTORY_API_URL:-https://satisfactory-server:7777/api/v1}
+      SATISFACTORY_API_TOKEN: ${SATISFACTORY_API_TOKEN:-}
+      SATISFACTORY_ADMIN_PASSWORD: ${SATISFACTORY_ADMIN_PASSWORD:-}
+      FRM_BASE_URL: ${FRM_BASE_URL:-}
