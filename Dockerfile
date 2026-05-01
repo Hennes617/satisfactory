@@ -18,4 +18,4 @@ RUN npm ci --omit=dev
 COPY --from=build /app/dist ./dist
 COPY server ./server
 EXPOSE 80
-CMD ["node", "server/index.js"]
+CMD ["node", "--max-old-space-size=512", "server/index.js"]

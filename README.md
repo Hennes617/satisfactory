@@ -93,7 +93,6 @@ Log in with `WEB_ADMIN_PASSWORD`.
 | `DASHBOARD_CONTAINER_PORT` | `80` | Internal port the dashboard container listens on |
 | `DASHBOARD_DEV_API_PORT` | `8080` | Local development backend port |
 | `DASHBOARD_MEMORY_LIMIT` | `768m` | Docker memory limit for the dashboard container |
-| `DASHBOARD_NODE_OPTIONS` | `--max-old-space-size=512` | Node heap limit for the dashboard container |
 | `SATISFACTORY_CONTAINER_NAME` | `satisfactory-server` | Container controlled by the dashboard |
 | `SATISFACTORY_SERVICE_NAME` | `satisfactory-server` | Compose service name used to find Coolify-renamed containers |
 | `SATISFACTORY_IMAGE` | `wolveix/satisfactory-server:latest` | Docker image checked and pulled by the update flow |
@@ -237,7 +236,6 @@ DASHBOARD_HOST_IP=0.0.0.0
 DASHBOARD_HOST_PORT=7634
 DASHBOARD_CONTAINER_PORT=80
 DASHBOARD_MEMORY_LIMIT=768m
-DASHBOARD_NODE_OPTIONS=--max-old-space-size=512
 ```
 
 For your Satisfactory API connection, either leave `SATISFACTORY_API_URL` empty and use protocol/host/port:
