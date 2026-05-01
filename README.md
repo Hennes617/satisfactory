@@ -27,8 +27,8 @@ The project runs two containers:
 - At least 8 GB RAM available for the Satisfactory server
 - Ports available on the host:
   - `7634/tcp` for the dashboard by default, configurable with `DASHBOARD_HOST_PORT`
-  - `7777/tcp` and `7777/udp` for the game server
-  - `8888/tcp` as an additional server port exposed by the image
+  - `7777/tcp` and `7777/udp` for the game server by default, configurable with `SATISFACTORY_GAME_*`
+  - `8888/tcp` as an additional server port by default, configurable with `SATISFACTORY_BEACON_*`
 
 ## Quick Start
 
@@ -49,6 +49,7 @@ Edit `.env` before starting:
 ```env
 WEB_ADMIN_PASSWORD=use-a-real-password
 JWT_SECRET=use-a-long-random-secret
+DASHBOARD_HOST_IP=0.0.0.0
 DASHBOARD_HOST_PORT=7634
 DASHBOARD_CONTAINER_PORT=80
 MAXPLAYERS=4
@@ -76,7 +77,7 @@ http://localhost:7634
 If you changed `DASHBOARD_HOST_PORT`, use that host port instead. Example:
 
 ```text
-http://localhost:3000
+http://localhost:8088
 ```
 
 Log in with `WEB_ADMIN_PASSWORD`.
@@ -87,11 +88,23 @@ Log in with `WEB_ADMIN_PASSWORD`.
 | --- | --- | --- |
 | `WEB_ADMIN_PASSWORD` | `change-me-now` | Password for the dashboard login |
 | `JWT_SECRET` | `replace-with-a-long-random-string` | Secret used to sign dashboard sessions |
+| `DASHBOARD_HOST_IP` | `0.0.0.0` | Host interface used for the dashboard port binding |
 | `DASHBOARD_HOST_PORT` | `7634` | Host port for the dashboard |
 | `DASHBOARD_CONTAINER_PORT` | `80` | Internal port the dashboard container listens on |
+| `DASHBOARD_DEV_API_PORT` | `8080` | Local development backend port |
 | `SATISFACTORY_CONTAINER_NAME` | `satisfactory-server` | Container controlled by the dashboard |
 | `SATISFACTORY_IMAGE` | `wolveix/satisfactory-server:latest` | Docker image checked and pulled by the update flow |
-| `SATISFACTORY_API_URL` | `https://satisfactory-server:7777/api/v1` | Dedicated Server API endpoint inside the Compose network |
+| `SATISFACTORY_HOST_IP` | `0.0.0.0` | Host interface used for Satisfactory port bindings |
+| `SATISFACTORY_GAME_TCP_HOST_PORT` | `7777` | Host TCP game/API port |
+| `SATISFACTORY_GAME_TCP_CONTAINER_PORT` | `7777` | Container TCP game/API port |
+| `SATISFACTORY_GAME_UDP_HOST_PORT` | `7777` | Host UDP game port |
+| `SATISFACTORY_GAME_UDP_CONTAINER_PORT` | `7777` | Container UDP game port |
+| `SATISFACTORY_BEACON_HOST_PORT` | `8888` | Host port for the additional server port exposed by the image |
+| `SATISFACTORY_BEACON_CONTAINER_PORT` | `8888` | Container port for the additional server port exposed by the image |
+| `SATISFACTORY_API_PROTOCOL` | `https` | Protocol used by the dashboard to call the Dedicated Server API |
+| `SATISFACTORY_API_HOST` | `satisfactory-server` | Hostname used by the dashboard to call the Dedicated Server API |
+| `SATISFACTORY_API_PORT` | `7777` | Port used by the dashboard to call the Dedicated Server API |
+| `SATISFACTORY_API_URL` | empty | Optional full API URL override. If set, it wins over protocol/host/port |
 | `SATISFACTORY_API_TOKEN` | empty | Preferred auth method for admin API actions |
 | `SATISFACTORY_ADMIN_PASSWORD` | empty | Alternative auth method for admin API actions |
 | `FRM_BASE_URL` | empty | Optional Ficsit Remote Monitoring base URL for live player positions |
@@ -198,26 +211,28 @@ npm start
 
 During local development:
 
-- Node API: `http://localhost:3000`
+- Node API: `http://localhost:8080`
 - Vite frontend: `http://localhost:5173`
 
 ## Coolify Deployment
 
 Coolify creates its own runtime `.env` file. It does not automatically use `.env.example`.
 
-If deployment fails with a message like this:
-
-```text
-Bind for 0.0.0.0:3000 failed: port is already allocated
-```
-
-then the dashboard host port is already used on your server. Set this environment variable in the Coolify application:
+If deployment fails with a Docker bind error, then the configured dashboard host port is already used on your server. Set this environment variable in the Coolify application:
 
 ```env
 DASHBOARD_HOST_PORT=7634
 ```
 
 Then redeploy. You can use any free host port, for example `7635`, `8088`, or `18080`.
+
+If Coolify still tries to bind another port, check the runtime environment variables in Coolify. The values that matter are:
+
+```env
+DASHBOARD_HOST_IP=0.0.0.0
+DASHBOARD_HOST_PORT=7634
+DASHBOARD_CONTAINER_PORT=80
+```
 
 ## Security Notes
 

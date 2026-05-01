@@ -17,12 +17,17 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const projectRoot = path.resolve(__dirname, '..');
 
-const PORT = Number(process.env.PORT || 3000);
+const PORT = Number(process.env.PORT || process.env.DASHBOARD_CONTAINER_PORT || process.env.DASHBOARD_DEV_API_PORT || 8080);
 const COOKIE_NAME = 'scc_session';
 const APP_DATA_DIR = process.env.APP_DATA_DIR || path.join(projectRoot, 'data', 'dashboard');
 const SETTINGS_FILE = path.join(APP_DATA_DIR, 'settings.json');
 const SAVE_ROOT = process.env.SAVE_ROOT || path.join(projectRoot, 'data', 'satisfactory-server', 'saved');
-const SATISFACTORY_API_URL = process.env.SATISFACTORY_API_URL || 'https://127.0.0.1:7777/api/v1';
+const SATISFACTORY_API_PROTOCOL = process.env.SATISFACTORY_API_PROTOCOL || 'https';
+const SATISFACTORY_API_HOST = process.env.SATISFACTORY_API_HOST || '127.0.0.1';
+const SATISFACTORY_API_PORT = process.env.SATISFACTORY_API_PORT || '7777';
+const SATISFACTORY_API_URL =
+  process.env.SATISFACTORY_API_URL ||
+  `${SATISFACTORY_API_PROTOCOL}://${SATISFACTORY_API_HOST}:${SATISFACTORY_API_PORT}/api/v1`;
 const SATISFACTORY_CONTAINER_NAME = process.env.SATISFACTORY_CONTAINER_NAME || 'satisfactory-server';
 const SATISFACTORY_IMAGE = process.env.SATISFACTORY_IMAGE || 'wolveix/satisfactory-server:latest';
 const WEB_ADMIN_PASSWORD = process.env.WEB_ADMIN_PASSWORD || 'change-me-now';
