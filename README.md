@@ -117,6 +117,8 @@ data/
 
 The dashboard mounts `./data/satisfactory-server` read-only so it can parse local saves for map fallback data.
 
+The UI uses a local copy of the Satisfactory world map at `public/assets/satisfactory-map.jpg`. The source is the Official Satisfactory Wiki `Map.jpg`; Satisfactory assets are owned by Coffee Stain Studios.
+
 ## Server API Auth
 
 The dashboard can show basic Docker health without Satisfactory API admin auth, but save management and some server API calls need admin credentials.

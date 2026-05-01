@@ -315,10 +315,8 @@ function MapPanel({ overview }) {
       </div>
       <div className="map-shell">
         <div className="map-surface">
+          <img className="map-image" src="/assets/satisfactory-map.jpg" alt="" draggable="false" />
           <div className="map-grid" />
-          <div className="terrain terrain-forest" />
-          <div className="terrain terrain-desert" />
-          <div className="terrain terrain-swamp" />
           {markers.map((marker) => (
             <div
               key={marker.id}
