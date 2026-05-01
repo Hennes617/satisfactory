@@ -13,6 +13,11 @@ import { Agent } from 'undici';
 import { fileURLToPath } from 'node:url';
 import { Parser } from '@etothepii/satisfactory-file-parser';
 
+if (process.env.NODE_TLS_REJECT_UNAUTHORIZED === '0') {
+  delete process.env.NODE_TLS_REJECT_UNAUTHORIZED;
+  console.warn('Ignoring NODE_TLS_REJECT_UNAUTHORIZED=0; Satisfactory API TLS is handled per request.');
+}
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const projectRoot = path.resolve(__dirname, '..');
@@ -26,12 +31,15 @@ const SATISFACTORY_API_PROTOCOL = process.env.SATISFACTORY_API_PROTOCOL || 'http
 const SATISFACTORY_API_HOST = process.env.SATISFACTORY_API_HOST || '127.0.0.1';
 const SATISFACTORY_API_PORT = process.env.SATISFACTORY_API_PORT || '7777';
 const SATISFACTORY_API_URL =
-  process.env.SATISFACTORY_API_URL ||
-  `${SATISFACTORY_API_PROTOCOL}://${SATISFACTORY_API_HOST}:${SATISFACTORY_API_PORT}/api/v1`;
+  normalizeApiUrl(process.env.SATISFACTORY_API_URL) ||
+  normalizeApiUrl(`${SATISFACTORY_API_PROTOCOL}://${SATISFACTORY_API_HOST}:${SATISFACTORY_API_PORT}`);
 const SATISFACTORY_CONTAINER_NAME = process.env.SATISFACTORY_CONTAINER_NAME || 'satisfactory-server';
+const SATISFACTORY_SERVICE_NAME = process.env.SATISFACTORY_SERVICE_NAME || 'satisfactory-server';
 const SATISFACTORY_IMAGE = process.env.SATISFACTORY_IMAGE || 'wolveix/satisfactory-server:latest';
 const WEB_ADMIN_PASSWORD = process.env.WEB_ADMIN_PASSWORD || 'change-me-now';
 const JWT_SECRET = process.env.JWT_SECRET || crypto.randomBytes(48).toString('hex');
+const ENABLE_SAVE_MAP_PARSING = truthy(process.env.ENABLE_SAVE_MAP_PARSING);
+const MAX_SAVE_PARSE_BYTES = Number(process.env.MAX_SAVE_PARSE_BYTES || 100 * 1024 * 1024);
 const docker = new Docker({ socketPath: process.env.DOCKER_SOCKET || '/var/run/docker.sock' });
 const tlsDispatcher = new Agent({ connect: { rejectUnauthorized: false } });
 const upload = multer({
@@ -41,6 +49,7 @@ const upload = multer({
 
 let cachedGameToken = null;
 let updateJob = null;
+let latestSaveMapCache = null;
 
 class HttpError extends Error {
   constructor(status, message, details = undefined) {
@@ -48,6 +57,14 @@ class HttpError extends Error {
     this.status = status;
     this.details = details;
   }
+}
+
+function normalizeApiUrl(value) {
+  if (!value) {
+    return '';
+  }
+  const trimmed = String(value).trim().replace(/\/+$/, '');
+  return trimmed.endsWith('/api/v1') ? trimmed : `${trimmed}/api/v1`;
 }
 
 const asyncHandler = (fn) => (req, res, next) => {
@@ -60,6 +77,15 @@ function truthy(value) {
 
 function nowIso() {
   return new Date().toISOString();
+}
+
+function formatBytes(value) {
+  if (!Number.isFinite(value) || value <= 0) {
+    return '0 B';
+  }
+  const units = ['B', 'KB', 'MB', 'GB'];
+  const index = Math.min(Math.floor(Math.log(value) / Math.log(1024)), units.length - 1);
+  return `${(value / 1024 ** index).toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
 }
 
 function publicError(error) {
@@ -104,6 +130,8 @@ function sanitizeSettings(settings) {
     hasAdminPassword: Boolean(process.env.SATISFACTORY_ADMIN_PASSWORD || settings.satisfactoryAdminPassword),
     hasApiToken: Boolean(process.env.SATISFACTORY_API_TOKEN || settings.satisfactoryApiToken),
     frmBaseUrl: process.env.FRM_BASE_URL || settings.frmBaseUrl || '',
+    enableSaveMapParsing: ENABLE_SAVE_MAP_PARSING,
+    maxSaveParseBytes: MAX_SAVE_PARSE_BYTES,
     saveRoot: SAVE_ROOT,
     apiUrl: SATISFACTORY_API_URL,
     containerName: SATISFACTORY_CONTAINER_NAME,
@@ -277,8 +305,47 @@ async function callGameMultipart(functionName, data, file) {
   return decodeEnvelope(payload);
 }
 
-function getContainer() {
-  return docker.getContainer(SATISFACTORY_CONTAINER_NAME);
+async function resolveSatisfactoryContainer() {
+  const directCandidates = [SATISFACTORY_CONTAINER_NAME, SATISFACTORY_SERVICE_NAME].filter(Boolean);
+  for (const name of directCandidates) {
+    try {
+      const container = docker.getContainer(name);
+      const inspect = await container.inspect();
+      return { container, inspect };
+    } catch (error) {
+      if (error.statusCode && error.statusCode !== 404) {
+        throw error;
+      }
+    }
+  }
+
+  const containers = await docker.listContainers({ all: true });
+  const match = containers.find((candidate) => {
+    const names = candidate.Names || [];
+    const serviceLabel = candidate.Labels?.['com.docker.compose.service'];
+    return (
+      serviceLabel === SATISFACTORY_SERVICE_NAME ||
+      names.some((name) => {
+        const clean = name.replace(/^\//, '');
+        return (
+          clean === SATISFACTORY_CONTAINER_NAME ||
+          clean === SATISFACTORY_SERVICE_NAME ||
+          clean.startsWith(`${SATISFACTORY_SERVICE_NAME}-`) ||
+          clean.startsWith(`${SATISFACTORY_CONTAINER_NAME}-`)
+        );
+      })
+    );
+  });
+
+  if (!match) {
+    throw new HttpError(
+      404,
+      `Satisfactory-Container nicht gefunden: ${SATISFACTORY_CONTAINER_NAME}/${SATISFACTORY_SERVICE_NAME}`
+    );
+  }
+
+  const container = docker.getContainer(match.Id);
+  return { container, inspect: await container.inspect() };
 }
 
 function calculateCpuPercent(stats) {
@@ -327,8 +394,7 @@ function normalizeStats(stats) {
 }
 
 async function getDockerStatus() {
-  const container = getContainer();
-  const inspect = await container.inspect();
+  const { container, inspect } = await resolveSatisfactoryContainer();
   let stats = null;
   if (inspect.State?.Running) {
     stats = normalizeStats(await container.stats({ stream: false }));
@@ -468,8 +534,7 @@ async function runUpdateJob() {
 
     await pullImage(job);
 
-    const container = getContainer();
-    const inspect = await container.inspect();
+    const { container, inspect } = await resolveSatisfactoryContainer();
     if (inspect.State?.Running) {
       pushJobLog(job, 'Container wird neu gestartet');
       await container.restart({ t: 20 });
@@ -596,9 +661,48 @@ function extractSaveMap(save, metadata = {}) {
   };
 }
 
+function skippedSaveMap(source, metadata, warning) {
+  return {
+    source,
+    save: metadata,
+    parsedAt: null,
+    warning,
+    bounds: { minX: -324600, maxX: 425300, minY: -375000, maxY: 375000 },
+    players: [],
+    markers: [],
+    objectCount: 0
+  };
+}
+
+function saveParseGate(size) {
+  if (!ENABLE_SAVE_MAP_PARSING) {
+    return {
+      ok: false,
+      warning: 'Savegame-Parsing ist deaktiviert. Setze ENABLE_SAVE_MAP_PARSING=true, oder nutze FRM_BASE_URL fuer Live-Positionen.'
+    };
+  }
+
+  if (Number.isFinite(MAX_SAVE_PARSE_BYTES) && MAX_SAVE_PARSE_BYTES > 0 && size > MAX_SAVE_PARSE_BYTES) {
+    return {
+      ok: false,
+      warning: `Savegame ist zu gross fuer automatisches Parsing (${formatBytes(size)} > ${formatBytes(MAX_SAVE_PARSE_BYTES)}).`
+    };
+  }
+
+  return { ok: true };
+}
+
 async function parseSaveBuffer(buffer, name = 'save.sav', metadata = {}) {
   const save = Parser.ParseSave(name, asArrayBuffer(buffer), { throwErrors: false });
   return extractSaveMap(save, metadata);
+}
+
+async function parseSaveBufferIfAllowed(buffer, name, metadata, source = 'save') {
+  const gate = saveParseGate(metadata?.size || buffer.length || 0);
+  if (!gate.ok) {
+    return skippedSaveMap(source, metadata, gate.warning);
+  }
+  return parseSaveBuffer(buffer, name, metadata);
 }
 
 async function getLatestSaveMap() {
@@ -614,8 +718,20 @@ async function getLatestSaveMap() {
     };
   }
 
+  const gate = saveParseGate(latest.size);
+  if (!gate.ok) {
+    return skippedSaveMap('save-disabled', latest, gate.warning);
+  }
+
+  const cacheKey = `${latest.path}:${latest.modifiedAt}:${latest.size}`;
+  if (latestSaveMapCache?.key === cacheKey) {
+    return latestSaveMapCache.data;
+  }
+
   const buffer = await fs.readFile(latest.path);
-  return parseSaveBuffer(buffer, latest.name, latest);
+  const data = await parseSaveBuffer(buffer, latest.name, latest);
+  latestSaveMapCache = { key: cacheKey, data };
+  return data;
 }
 
 function normalizeFrmPlayers(players) {
@@ -798,7 +914,7 @@ app.get('/api/overview', asyncHandler(async (_req, res) => {
 
 app.post('/api/docker/:action', asyncHandler(async (req, res) => {
   const action = req.params.action;
-  const container = getContainer();
+  const { container } = await resolveSatisfactoryContainer();
   if (action === 'start') {
     await container.start();
   } else if (action === 'stop') {
@@ -871,11 +987,11 @@ app.post('/api/saves/upload', upload.single('saveGameFile'), asyncHandler(async 
       LoadSaveGame: loadSaveGame,
       EnableAdvancedGameSettings: enableAdvancedGameSettings
     }, req.file),
-    parseSaveBuffer(req.file.buffer, req.file.originalname, {
+    parseSaveBufferIfAllowed(req.file.buffer, req.file.originalname, {
       name: req.file.originalname,
       size: req.file.size,
       uploadedAt: nowIso()
-    }).catch((error) => ({ source: 'upload', error: error.message, players: [], markers: [] }))
+    }, 'upload').catch((error) => ({ source: 'upload', error: error.message, players: [], markers: [] }))
   ]);
   res.json({ ok: true, uploadResult, map: parsed });
 }));
@@ -920,11 +1036,11 @@ app.post('/api/map/parse', upload.single('saveGameFile'), asyncHandler(async (re
   if (!req.file) {
     throw new HttpError(400, 'Savegame-Datei fehlt');
   }
-  res.json(await parseSaveBuffer(req.file.buffer, req.file.originalname, {
+  res.json(await parseSaveBufferIfAllowed(req.file.buffer, req.file.originalname, {
     name: req.file.originalname,
     size: req.file.size,
     uploadedAt: nowIso()
-  }));
+  }, 'upload'));
 }));
 
 const distDir = path.join(projectRoot, 'dist');

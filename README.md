@@ -28,7 +28,7 @@ The project runs two containers:
 - Ports available on the host:
   - `7634/tcp` for the dashboard by default, configurable with `DASHBOARD_HOST_PORT`
   - `7777/tcp` and `7777/udp` for the game server by default, configurable with `SATISFACTORY_GAME_*`
-  - `8888/tcp` as an additional server port by default, configurable with `SATISFACTORY_BEACON_*`
+  - `8888/tcp` for reliable messaging by default, configurable with `SATISFACTORY_MESSAGING_HOST_PORT`
 
 ## Quick Start
 
@@ -92,22 +92,26 @@ Log in with `WEB_ADMIN_PASSWORD`.
 | `DASHBOARD_HOST_PORT` | `7634` | Host port for the dashboard |
 | `DASHBOARD_CONTAINER_PORT` | `80` | Internal port the dashboard container listens on |
 | `DASHBOARD_DEV_API_PORT` | `8080` | Local development backend port |
+| `DASHBOARD_MEMORY_LIMIT` | `768m` | Docker memory limit for the dashboard container |
+| `DASHBOARD_NODE_OPTIONS` | `--max-old-space-size=512` | Node heap limit for the dashboard container |
 | `SATISFACTORY_CONTAINER_NAME` | `satisfactory-server` | Container controlled by the dashboard |
+| `SATISFACTORY_SERVICE_NAME` | `satisfactory-server` | Compose service name used to find Coolify-renamed containers |
 | `SATISFACTORY_IMAGE` | `wolveix/satisfactory-server:latest` | Docker image checked and pulled by the update flow |
 | `SATISFACTORY_HOST_IP` | `0.0.0.0` | Host interface used for Satisfactory port bindings |
 | `SATISFACTORY_GAME_TCP_HOST_PORT` | `7777` | Host TCP game/API port |
-| `SATISFACTORY_GAME_TCP_CONTAINER_PORT` | `7777` | Container TCP game/API port |
 | `SATISFACTORY_GAME_UDP_HOST_PORT` | `7777` | Host UDP game port |
-| `SATISFACTORY_GAME_UDP_CONTAINER_PORT` | `7777` | Container UDP game port |
-| `SATISFACTORY_BEACON_HOST_PORT` | `8888` | Host port for the additional server port exposed by the image |
-| `SATISFACTORY_BEACON_CONTAINER_PORT` | `8888` | Container port for the additional server port exposed by the image |
+| `SATISFACTORY_MESSAGING_HOST_PORT` | `8888` | Host reliable messaging port |
+| `SERVERGAMEPORT` | `7777` | Internal Satisfactory game/API port used by the server image |
+| `SERVERMESSAGINGPORT` | `8888` | Internal reliable messaging port used by the server image |
 | `SATISFACTORY_API_PROTOCOL` | `https` | Protocol used by the dashboard to call the Dedicated Server API |
 | `SATISFACTORY_API_HOST` | `satisfactory-server` | Hostname used by the dashboard to call the Dedicated Server API |
 | `SATISFACTORY_API_PORT` | `7777` | Port used by the dashboard to call the Dedicated Server API |
-| `SATISFACTORY_API_URL` | empty | Optional full API URL override. If set, it wins over protocol/host/port |
+| `SATISFACTORY_API_URL` | empty | Optional full API URL override. If `/api/v1` is missing, the dashboard appends it |
 | `SATISFACTORY_API_TOKEN` | empty | Preferred auth method for admin API actions |
 | `SATISFACTORY_ADMIN_PASSWORD` | empty | Alternative auth method for admin API actions |
 | `FRM_BASE_URL` | empty | Optional Ficsit Remote Monitoring base URL for live player positions |
+| `ENABLE_SAVE_MAP_PARSING` | `false` | Enables local `.sav` parsing for map fallback |
+| `MAX_SAVE_PARSE_BYTES` | `104857600` | Maximum save size parsed by the dashboard |
 | `MAXPLAYERS` | `4` | Satisfactory max player count |
 | `PUID` | `1000` | User id used by the server container |
 | `PGID` | `1000` | Group id used by the server container |
@@ -153,7 +157,7 @@ You can also enter the token or admin password in the dashboard settings. Values
 The vanilla Satisfactory Dedicated Server API does not expose live player coordinates. This dashboard supports two data sources:
 
 - Live mode: set `FRM_BASE_URL` to a reachable Ficsit Remote Monitoring endpoint. The dashboard calls `GET /getPlayer`.
-- Save fallback: if FRM is not configured, the dashboard parses the newest `.sav` file from the mounted server data.
+- Save fallback: if `ENABLE_SAVE_MAP_PARSING=true`, the dashboard parses the newest `.sav` file from the mounted server data.
 
 Example:
 
@@ -161,7 +165,7 @@ Example:
 FRM_BASE_URL=http://satisfactory-server:8080
 ```
 
-Save fallback is useful for overview and offline inspection, but it is only as fresh as the latest save.
+Save fallback is useful for overview and offline inspection, but it can use a lot of memory on large worlds. It is disabled by default so the dashboard cannot crash-loop from save parsing on small VPS instances. Prefer FRM for live positions.
 
 ## Updates
 
@@ -232,7 +236,26 @@ If Coolify still tries to bind another port, check the runtime environment varia
 DASHBOARD_HOST_IP=0.0.0.0
 DASHBOARD_HOST_PORT=7634
 DASHBOARD_CONTAINER_PORT=80
+DASHBOARD_MEMORY_LIMIT=768m
+DASHBOARD_NODE_OPTIONS=--max-old-space-size=512
 ```
+
+For your Satisfactory API connection, either leave `SATISFACTORY_API_URL` empty and use protocol/host/port:
+
+```env
+SATISFACTORY_API_PROTOCOL=https
+SATISFACTORY_API_HOST=satisfactory-server
+SATISFACTORY_API_PORT=7777
+SATISFACTORY_API_URL=
+```
+
+or set the full URL with the API path:
+
+```env
+SATISFACTORY_API_URL=https://satisfactory-server:7777/api/v1
+```
+
+Do not set `NODE_TLS_REJECT_UNAUTHORIZED=0` in Coolify. The dashboard already accepts the Satisfactory server's self-signed certificate only for the Satisfactory API request.
 
 ## Security Notes
 
